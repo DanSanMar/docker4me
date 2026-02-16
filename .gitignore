@@ -1,0 +1,49 @@
+# =========================
+# Archivos del sistema
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Archivos temporales
+# =========================
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+
+# =========================
+# Directorios temporales
+# =========================
+tmp/
+temp/
+
+# =========================
+# Archivos de entorno
+# =========================
+.env
+.env.*
+
+# =========================
+# Configuración de editores
+# =========================
+
+# VSCode
+.vscode/
+
+# JetBrains (IntelliJ, PyCharm, etc.)
+.idea/
+
+# Vim
+*.un~
+
+# =========================
+# Bash history accidental
+# =========================
+.bash_history
+
+# =========================
+# Archivos generados por pruebas
+# =========================
+coverage/
