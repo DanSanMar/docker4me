@@ -9,9 +9,8 @@ ROJO="\e[1;31m"
 VERDE="\e[1;32m"
 RESET="\e[0m"
 
-# --- DETECTOR DE TERMINAL MEJORADO ---
+# --- DETECTOR DE TERMINAL ---
 detectar_terminal() {
-    # Si estamos en SSH o no hay entorno gráfico, no buscamos terminales X11
     if [[ -z "$DISPLAY" && -z "$WAYLAND_DISPLAY" ]]; then
         echo ""
         return
@@ -52,7 +51,7 @@ function mostrar_logo() {
     echo "  ██   ██ ██    ██ ██      █████  █████   ██████  ███████ ██ ████ ██ █████   "
     echo "  ██   ██ ██    ██ ██      ██  ██ ██      ██   ██     ██ ██  ██  ██ ██      "
     echo "  ██████   ██████   ██████ ██  ██ ███████ ██   ██     ██ ██      ██ ███████ "
-    echo -e "${BLANCO}   Docker4me Versión 1.3 - Menú interactivo de selección para Docker${RESET}"
+    echo -e "${BLANCO}   Docker4me Versión 1.4 - Interfaz Completa Interactiva con FZF${RESET}"
     echo -e "${AZUL}   -------------------------------------------------------------------------${RESET}"
     echo ""
 }
@@ -65,14 +64,13 @@ function abrir_imagen() {
     image=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -v "<none>" | fzf --height 40% --reverse --header "SELECCIONA IMAGEN PARA LANZAR:")
     
     if [[ -n "$image" ]]; then
-        # Comando adaptativo que detecta si el contenedor tiene bash o sh
         cmd="if docker run --rm -it $image /bin/bash; then :; else docker run --rm -it $image /bin/sh; fi"
         
         if [[ -n "$MY_TERM" ]]; then
             echo -e "${VERDE}🚀 Abriendo $image en nueva ventana ($MY_TERM)...${RESET}"
             $MY_TERM -- bash -c "$cmd; echo -e '\n${AMARILLO}Presiona Enter para cerrar...${RESET}'; read" &
         else
-            echo -e "${VERDE}🚀 Lanzando $image aquí mismo (No se detectó terminal gráfica)...${RESET}"
+            echo -e "${VERDE}🚀 Lanzando $image aquí mismo...${RESET}"
             clear
             eval "$cmd"
         fi
@@ -88,7 +86,6 @@ function contenedor_abierto() {
     container=$(docker ps --format "{{.ID}} | {{.Names}} ({{.Image}})" | fzf --height 40% --reverse --header "CONECTAR A CONTENEDOR:")
     
     if [[ -n "$container" ]]; then
-        # Optimización en Bash para evitar usar 'cut'
         container_id="${container%% *}"
         cmd="if docker exec -it $container_id /bin/bash; then :; else docker exec -it $container_id /bin/sh; fi"
         
@@ -102,6 +99,22 @@ function contenedor_abierto() {
         fi
     else
         echo -e "${AMARILLO}⚠️ No se seleccionó ningún contenedor.${RESET}"
+        sleep 1
+    fi
+}
+
+function ver_logs() {
+    local container container_id
+    echo -e "${AMARILLO}🔍 Selecciona contenedor para ver logs:${RESET}"
+    container=$(docker ps -a --format "{{.ID}} | {{.Names}}" | fzf --height 40% --reverse --header "VER LOGS DE:")
+    
+    if [[ -n "$container" ]]; then
+        container_id="${container%% *}"
+        clear
+        echo -e "${AZUL}📋 Mostrando últimas 50 líneas y siguiendo en vivo... (Ctrl+C para volver al menú)${RESET}\n"
+        docker logs --tail 50 -f "$container_id"
+    else
+        echo -e "${AMARILLO}⚠️ Cancelado.${RESET}"
         sleep 1
     fi
 }
@@ -136,24 +149,7 @@ function eliminar_contenedor() {
     sleep 1
 }
 
-# --- NUEVA FUNCIÓN: VER LOGS ---
-function ver_logs() {
-    local container container_id
-    echo -e "${AMARILLO}🔍 Selecciona contenedor para ver logs (Ctrl+C para salir de los logs):${RESET}"
-    container=$(docker ps -a --format "{{.ID}} | {{.Names}}" | fzf --height 40% --reverse --header "VER LOGS DE:")
-    
-    if [[ -n "$container" ]]; then
-        container_id="${container%% *}"
-        clear
-        echo -e "${AZUL}📋 Mostrando últimas 50 líneas y siguiendo en vivo... (Ctrl+C para volver al menú)${RESET}\n"
-        docker logs --tail 50 -f "$container_id"
-    else
-        echo -e "${AMARILLO}⚠️ Cancelado.${RESET}"
-        sleep 1
-    fi
-}
-
-# --- 4. VALIDACIONES Y BUCLE PRINCIPAL ---
+# --- 4. VALIDACIONES Y BUCLE PRINCIPAL INTERACTIVO ---
 
 check_command "fzf"
 check_command "docker"
@@ -166,22 +162,28 @@ fi
 
 while true; do
     mostrar_logo
-    echo -e "${BLANCO}1.${RESET} Crear contenedor desde imagen (docker run)"
-    echo -e "${BLANCO}2.${RESET} Entrar en contenedor activo (docker exec)"
-    echo -e "${BLANCO}3.${RESET} Ver logs de un contenedor (docker logs)"
-    echo -e "${BLANCO}4.${RESET} Detener contenedor (docker stop)"
-    echo -e "${BLANCO}5.${RESET} Eliminar contenedor (docker rm)"
-    echo -e "${BLANCO}6.${RESET} Salir"
-    echo -ne "\n${AZUL}Selecciona una opción: ${RESET}"
-    read -r opt
 
-    case $opt in
-        1) abrir_imagen ;;
-        2) contenedor_abierto ;;
-        3) ver_logs ;;
-        4) detener_contenedor ;;
-        5) eliminar_contenedor ;;
-        6) despedida ;;
-        *) echo -e "${ROJO}Opción no válida.${RESET}"; sleep 1 ;;
+    # Lanzamos el menú interactivo principal
+    opcion=$(printf "🚀 Crear contenedor desde imagen (run)\n💻 Entrar a un contenedor activo (exec)\n📋 Ver logs de un contenedor (logs)\n🛑 Detener un contenedor (stop)\n🗑️ Eliminar un contenedor (rm)\n❌ Salir" | \
+             fzf --height 40% --reverse --header "SELECCIONA UNA ACCIÓN:")
+
+    # Si presionas ESC, salimos limpiamente
+    if [[ -z "$opcion" ]]; then
+        despedida
+    fi
+
+    # Ejecutamos la acción
+    case "$opcion" in
+        *"Crear contenedor"*) abrir_imagen ;;
+        *"Entrar a un contenedor"*) contenedor_abierto ;;
+        *"Ver logs"*) 
+            ver_logs 
+            # Pausa para que al salir de los logs (Ctrl+C) puedas ver si quedó algún mensaje antes del clear
+            echo -e "\n${AMARILLO}Volviendo al menú principal...${RESET}"
+            sleep 1.5
+            ;;
+        *"Detener un contenedor"*) detener_contenedor ;;
+        *"Eliminar un contenedor"*) eliminar_contenedor ;;
+        *"Salir"*) despedida ;;
     esac
 done
