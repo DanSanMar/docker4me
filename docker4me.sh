@@ -51,7 +51,7 @@ function mostrar_logo() {
     echo "  ██   ██ ██    ██ ██      █████  █████   ██████  ███████ ██ ████ ██ █████   "
     echo "  ██   ██ ██    ██ ██      ██  ██ ██      ██   ██     ██ ██  ██  ██ ██      "
     echo "  ██████   ██████   ██████ ██  ██ ███████ ██   ██     ██ ██      ██ ███████ "
-    echo -e "${BLANCO}   Docker4me Versión 1.4 - Interfaz Completa Interactiva con FZF${RESET}"
+    echo -e "${BLANCO}   Docker4me Versión 1.6 - Interfaz más Completa e Interactiva${RESET}"
     echo -e "${AZUL}   -------------------------------------------------------------------------${RESET}"
     echo ""
 }
@@ -135,18 +135,94 @@ function detener_contenedor() {
 }
 
 function eliminar_contenedor() {
-    local container container_id
+    local container container_id conf
     echo -e "${ROJO}🔍 Selecciona el contenedor a ELIMINAR:${RESET}"
-    container=$(docker ps -a --format "{{.ID}} | {{.Names}} [{{.Status}}]" | fzf --height 40% --reverse --header "ELIMINAR CONTENEDOR:")
+    
+    # Inyectamos la opción masiva al principio de la lista de fzf
+    container=$( (echo "💥 BORRAR TODOS LOS CONTENEDORES (PARADOS Y ACTIVOS)"; docker ps -a --format "{{.ID}} | {{.Names}} [{{.Status}}]") | fzf --height 40% --reverse --header "ELIMINAR CONTENEDOR:")
     
     if [[ -n "$container" ]]; then
-        container_id="${container%% *}"
-        echo -e "${ROJO}🗑️ Eliminando $container_id...${RESET}"
-        docker rm -f "$container_id" && echo -e "${VERDE}✔ Contenedor eliminado.${RESET}"
+        if [[ "$container" == *"BORRAR TODOS"* ]]; then
+            echo -ne "${ROJO}⚠ ¿Seguro que quieres borrar TODOS los contenedores del sistema? (s/N): ${RESET}"
+            read -r conf
+            if [[ "$conf" =~ ^[sS]$ ]]; then
+                echo -e "${ROJO}🗑️ Deteniendo y eliminando absolutamente todos los contenedores...${RESET}"
+                docker rm -f $(docker ps -aq) 2>/dev/null && echo -e "${VERDE}✔ Todos los contenedores eliminados.${RESET}"
+            else
+                echo -e "${AMARILLO}⚠️ Operación cancelada.${RESET}"
+            fi
+        else
+            container_id="${container%% *}"
+            echo -e "${ROJO}🗑️ Eliminando $container_id...${RESET}"
+            docker rm -f "$container_id" && echo -e "${VERDE}✔ Contenedor eliminado.${RESET}"
+        fi
     else
         echo -e "${AMARILLO}⚠️ Cancelado.${RESET}"
     fi
-    sleep 1
+    sleep 1.5
+}
+
+function ver_imagenes() {
+    clear
+    echo -e "${AZUL}📋 Lista Completa de Imágenes Locales:${RESET}\n"
+    docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}"
+    echo -e "\n${AMARILLO}Presiona Enter para volver al menú principal...${RESET}"
+    read -r
+}
+
+function eliminar_imagen() {
+    local image image_clean conf
+    echo -e "${ROJO}🔍 Selecciona la imagen a ELIMINAR:${RESET}"
+    
+    # Inyectamos la opción masiva al principio de la lista de fzf
+    image=$( (echo "💥 BORRAR TODAS LAS IMÁGENES LOCALES"; docker images --format "{{.Repository}}:{{.Tag}} ({{.ID}})" | grep -v "<none>") | fzf --height 40% --reverse --header "ELIMINAR IMAGEN:")
+    
+    if [[ -n "$image" ]]; then
+        if [[ "$image" == *"BORRAR TODAS"* ]]; then
+            echo -ne "${ROJO}⚠ ¿Seguro que quieres borrar TODAS las imágenes del sistema? (s/N): ${RESET}"
+            read -r conf
+            if [[ "$conf" =~ ^[sS]$ ]]; then
+                echo -e "${ROJO}🗑️ Eliminando todas las imágenes locales...${RESET}"
+                docker rmi -f $(docker images -aq) 2>/dev/null && echo -e "${VERDE}✔ Todas las imágenes eliminadas.${RESET}"
+            else
+                echo -e "${AMARILLO}⚠️ Operación cancelada.${RESET}"
+            fi
+        else
+            image_clean="${image%% *}"
+            echo -e "${ROJO}🗑️ Eliminando imagen $image_clean...${RESET}"
+            docker rmi -f "$image_clean" && echo -e "${VERDE}✔ Imagen eliminada.${RESET}"
+        fi
+    else
+        echo -e "${AMARILLO}⚠️ Cancelado.${RESET}"
+    fi
+    sleep 1.5
+}
+
+function limpieza_profunda() {
+    clear
+    echo -e "${ROJO}╔══════════════════════════════════════════════════════════════════════════╗${RESET}"
+    echo -e "${ROJO}║  ⚠️  ¡ADVERTENCIA DE PELIGRO CRÍTICO!                                    ║${RESET}"
+    echo -e "${ROJO}╠══════════════════════════════════════════════════════════════════════════╣${RESET}"
+    echo -e "${ROJO}║  Esta acción ejecutará un 'docker system prune -a --volumes'.            ║${RESET}"
+    echo -e "${ROJO}║  Se eliminará de forma PERMANENTE e IRREVERSIBLE:                        ║${RESET}"
+    echo -e "${ROJO}║  1. Todos los contenedores detenidos.                                    ║${RESET}"
+    echo -e "${ROJO}║  2. Todas las redes que no estén siendo usadas.                          ║${RESET}"
+    echo -e "${ROJO}║  3. Todas las imágenes locales sin contenedores asociados.               ║${RESET}"
+    echo -e "${ROJO}║  4. Todos los volúmenes locales no utilizados (¡TUS DATOS DE VOLÚMENES!).║${RESET}"
+    echo -e "${ROJO}╚══════════════════════════════════════════════════════════════════════════╝${RESET}"
+    echo ""
+    echo -e "${AMARILLO}Para confirmar la destrucción total, escribe ${BLANCO}SI${AMARILLO} en mayúsculas.${RESET}"
+    echo -ne "${AZUL}¿Proceder con la limpieza profunda? : ${RESET}"
+    read -r confirmacion
+
+    if [[ "$confirmacion" == "SI" ]]; then
+        echo -e "\n${ROJO}💥 Iniciando purga completa del sistema...${RESET}"
+        docker system prune -a --volumes -f
+        echo -e "\n${VERDE}✔ Limpieza profunda completada con éxito.${RESET}"
+    else
+        echo -e "\n${AMARILLO}❌ Acción cancelada. No se ha modificado nada.${RESET}"
+    fi
+    sleep 3
 }
 
 # --- 4. VALIDACIONES Y BUCLE PRINCIPAL INTERACTIVO ---
@@ -163,27 +239,26 @@ fi
 while true; do
     mostrar_logo
 
-    # Lanzamos el menú interactivo principal
-    opcion=$(printf "🚀 Crear contenedor desde imagen (run)\n💻 Entrar a un contenedor activo (exec)\n📋 Ver logs de un contenedor (logs)\n🛑 Detener un contenedor (stop)\n🗑️ Eliminar un contenedor (rm)\n❌ Salir" | \
-             fzf --height 40% --reverse --header "SELECCIONA UNA ACCIÓN:")
+    opcion=$(printf "🚀 Crear contenedor desde imagen (run)\n💻 Entrar a un contenedor activo (exec)\n📋 Ver logs de un contenedor (logs)\n🛑 Detener un contenedor (stop)\n🗑️ Eliminar un contenedor (rm)\n🖼️ Ver imágenes locales\n💥 Eliminar una imagen concreta\n🚨 Limpieza profunda del sistema (System Prune)\n❌ Salir" | \
+             fzf --height 50% --reverse --header "SELECCIONA UNA ACCIÓN:")
 
-    # Si presionas ESC, salimos limpiamente
     if [[ -z "$opcion" ]]; then
         despedida
     fi
 
-    # Ejecutamos la acción
     case "$opcion" in
-        *"Crear contenedor"*) abrir_imagen ;;
+        *"Crear contenedor"*)    abrir_imagen ;;
         *"Entrar a un contenedor"*) contenedor_abierto ;;
         *"Ver logs"*) 
             ver_logs 
-            # Pausa para que al salir de los logs (Ctrl+C) puedas ver si quedó algún mensaje antes del clear
             echo -e "\n${AMARILLO}Volviendo al menú principal...${RESET}"
-            sleep 1.5
+            sleep 1
             ;;
         *"Detener un contenedor"*) detener_contenedor ;;
         *"Eliminar un contenedor"*) eliminar_contenedor ;;
-        *"Salir"*) despedida ;;
+        *"Ver imágenes locales"*)  ver_imagenes ;;
+        *"Eliminar una imagen"*)   eliminar_imagen ;;
+        *"Limpieza profunda"*)     limpieza_profunda ;;
+        *"Salir"*)                 despedida ;;
     esac
 done
